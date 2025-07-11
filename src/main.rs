@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use axum::{
-    Router,
+    Json, Router,
     extract::State,
     response::Html,
     routing::{get, get_service},
@@ -17,15 +17,22 @@ use tokio::{
     net::TcpListener,
 };
 use tower_http::services::ServeDir;
+// Types mayps
+#[derive(sqlx::FromRow, Debug)]
+struct User {
+    id: i64,
+    name: String,
+}
+
 
 #[tokio::main]
-
 async fn main() {
     let pool = SqlitePool::connect("sqlite:data.db").await.unwrap();
 
     let routes_hello = Router::new()
         .route("/", get(home_handler))
         .route("/about", get(about_handler))
+        .route("/api/getUsers", get(handle_users))
         .nest_service(
             "/assets",
             get_service(ServeDir::new("static/assets")).handle_error(|e| async move {
@@ -56,6 +63,28 @@ async fn home_handler() -> Html<String> {
 }
 
 async fn about_handler(State(pool): State<SqlitePool>) -> Html<String> {
+    let html_content  = match read_html_from_file("static/about.html").await{
+        Ok(html)=>html,
+        Err(e)=>{
+            eprint!("Failed to read HTML file: {e}");
+            "<h1>Error loading the About page".to_string()
+
+        }
+    }
+    Html(html_content)
+}
+
+async fn read_html_from_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    let mut file = File::open(path).await?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).await?;
+
+    Ok(contents)
+}
+
+
+
+async fn handle_users(State(pool): State<SqlitePool>) -> Json<Vec<User>> {
     let users: Vec<User> = match sqlx::query_as::<_, User>("SELECT id, name FROM users")
         .fetch_all(&pool)
         .await
@@ -67,48 +96,5 @@ async fn about_handler(State(pool): State<SqlitePool>) -> Html<String> {
         }
     };
 
-    let mut html: String = String::from(
-        "
-            <!DOCTYPE html>
-            <html >
-                <head>
-                <link rel='stylesheet' href='/assets/bootstrap/css/bootstrap.min.css'>
-                </head>
-
-            <body>
-    ",
-    );
-
-    for user in users {
-        let user_content = format!(
-            r#"
-        <h1  class='btn btn-primary' >{}</h1>
-        "#,
-            user.name
-        );
-
-        html.push_str(&user_content)
-    }
-
-    html.push_str(
-        r#"
-    </body>
-    </html>
-    "#,
-    );
-    Html(html)
-}
-
-async fn read_html_from_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
-    let mut file = File::open(path).await?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).await?;
-
-    Ok(contents)
-}
-
-#[derive(sqlx::FromRow, Debug)]
-struct User {
-    id: i64,
-    name: String,
+    Json(users)
 }
