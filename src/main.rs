@@ -6,6 +6,7 @@ use axum::{
     response::Html,
     routing::{get, get_service},
 };
+use serde::Serialize;
 use sqlx::{Sqlite, SqlitePool};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -18,12 +19,11 @@ use tokio::{
 };
 use tower_http::services::ServeDir;
 // Types mayps
-#[derive(sqlx::FromRow, Debug)]
+#[derive(sqlx::FromRow, Debug, Serialize)]
 struct User {
     id: i64,
     name: String,
 }
-
 
 #[tokio::main]
 async fn main() {
@@ -63,26 +63,15 @@ async fn home_handler() -> Html<String> {
 }
 
 async fn about_handler(State(pool): State<SqlitePool>) -> Html<String> {
-    let html_content  = match read_html_from_file("static/about.html").await{
-        Ok(html)=>html,
-        Err(e)=>{
+    let html_content = match read_html_from_file("static/about.html").await {
+        Ok(html) => html,
+        Err(e) => {
             eprint!("Failed to read HTML file: {e}");
             "<h1>Error loading the About page".to_string()
-
         }
-    }
+    };
     Html(html_content)
 }
-
-async fn read_html_from_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
-    let mut file = File::open(path).await?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).await?;
-
-    Ok(contents)
-}
-
-
 
 async fn handle_users(State(pool): State<SqlitePool>) -> Json<Vec<User>> {
     let users: Vec<User> = match sqlx::query_as::<_, User>("SELECT id, name FROM users")
@@ -97,4 +86,11 @@ async fn handle_users(State(pool): State<SqlitePool>) -> Json<Vec<User>> {
     };
 
     Json(users)
+}
+async fn read_html_from_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    let mut file = File::open(path).await?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).await?;
+
+    Ok(contents)
 }
