@@ -2,14 +2,16 @@
 
 use axum::{
     Json, Router,
-    extract::State,
-    response::Html,
-    routing::{get, get_service},
+    extract::{Multipart, State},
+    response::{Html, IntoResponse, Response},
+    routing::{get, get_service, post},
 };
 use serde::Serialize;
 use sqlx::{Sqlite, SqlitePool};
 use std::{
+    iter,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    ops::Mul,
     path::Path,
 };
 use tokio::{
@@ -33,6 +35,7 @@ async fn main() {
         .route("/", get(home_handler))
         .route("/about", get(about_handler))
         .route("/api/getUsers", get(handle_users))
+        .route("/api/wav-to-mp3", post(handle_wav_to_mp3))
         .nest_service(
             "/assets",
             get_service(ServeDir::new("static/assets")).handle_error(|e| async move {
@@ -87,6 +90,33 @@ async fn handle_users(State(pool): State<SqlitePool>) -> Json<Vec<User>> {
 
     Json(users)
 }
+
+async fn handle_wav_to_mp3(mut multipart: Multipart) -> Response {
+    let mut result = String::from("");
+
+    let mut iteration = 0;
+    while let Some(field_result) = multipart.next_field().await.unwrap_or(None) {
+        let file_name = field_result
+            .file_name()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        match Some(file_name) {
+            Some(a) => {
+                result = a;
+                println!("There is SOME: {result}");
+            }
+            None => {
+                break;
+            }
+        }
+    }
+
+    println!("aaand Returned");
+
+    (axum::http::StatusCode::OK, result).into_response()
+}
+
 async fn read_html_from_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
     let mut file = File::open(path).await?;
     let mut contents = String::new();
